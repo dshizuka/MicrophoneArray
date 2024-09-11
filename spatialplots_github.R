@@ -1,7 +1,9 @@
 ##Soundfinder
 ## Nov 2023: rgdal is now depricated
+#For plotting results of initial trials at Beaver Pond
 
 #install.packages("SoundFinder_1.0.tar.gz", repos = NULL, type ='source')
+library(SoundFinder)
 library(tidyverse)
 library(stringr)
 library(geodist)
@@ -12,12 +14,16 @@ library(ggplot2)
 
 options(digits=10)
 filename=list.files("data/xcorr_results", full.names=T)
-sample=1
-load(filename[sample])
+treatment=c("alarm", "control")
+load(filename[1])
+result_alarm=result.df
+
+load(filename[2])
+result_control=result.df
+
+results_list=list(result_alarm, result_control)
 
 #result.df
-
-
 
 mic.positions.dat=read.csv("micarray_trimblewaypoints_2021.csv")
 mic.pos.use=mic.positions.dat[which(mic.positions.dat$SITE=="beaver pond"),]
@@ -44,65 +50,93 @@ coords.xy
 # }
 # hist(sapply(result.df, function(x) min(x$peak.score, na.rm=T)), xlim=c(0,1))
 
-sound.type=sapply(result.df, function(x) x$call_type[1])
+loc.results_list=list()
+for (i in 1:length(results_list)){
+  result.df=results_list[[i]]
+sound.type=sapply(result.df, function(x) x$call_type[1]) %>% str_replace("oriole song?", "oriole")
 
 sound.results=as.data.frame(t(sapply(result.df, function(x) x$peak.time)))
 names(sound.results)=c("t1", "t2", "t3", "t4", "t5")
 temps=rep(21.5, nrow(sound.results))
 
 loc.result=localize(mics=coords.xy, sounds=sound.results, temps=temps)
-loc.result
 loc.result$sound.type=sound.type
 loc.result$low.peak.score=sapply(result.df, function(x) min(x$peak.score, na.rm=T))
 
-
+loc.results_list[[i]]=loc.result
+}
 ##save data frame in folder
-#Wwrite.csv(loc.result, paste(use.folder, "/localization_results_v2_20221021.csv", sep=""))
+#write.csv(loc.result, paste(use.folder, "/localization_results_v2_20221021.csv", sep=""))
 
 ######
-plot(loc.result$north, loc.result$east, pch=21, bg=gray(loc.result$err.metres/max(loc.result$err.metres)))
+# plot(loc.result$north, loc.result$east, pch=21, bg=gray(loc.result$err.metres/max(loc.result$err.metres)))
+# 
+# plot(err.metres~sound.type, data=loc.result %>% filter(err.metres<500))
 
-plot(err.metres~sound.type, data=loc.result %>% filter(err.metres<500))
-
-rare.voc=names(which(table(loc.result$sound.type)<5))
-loc.result.trim=loc.result %>%
-  filter(!sound.type%in%rare.voc) %>%
+loc.results.trim=list()
+for(i in 1:length(loc.results_list)){
+loc.results.trim[[i]]=loc.results_list[[i]] %>%
   filter(north<max(coords.xy$north) & east<max(coords.xy$east) & north>min(coords.xy$north) & east>min(coords.xy$east)) 
+}
 
-# loc.result.trim=loc.result %>% 
-#   filter(sound.type!=rare.voc) 
+sapply(loc.results.trim, function(x) unique(x$sound.type))
 
 #sound.type.color=data.frame(type=unique(factor(loc.result.trim$sound.type)), color=brewer.pal(length(unique(factor(loc.result.trim$sound.type))), "Set1"))
 
-color.code=data.frame(type=c("cheer", "cheer var", "check", "distress", "chonk", "tsew"), color=c("#E41A1C","#E41A1C", "#4DAF4A", "#4DAF4A", "#4DAF4A", "#FFFF33"))
+color.code=data.frame(type=c("cheer", "cheer var", "check", "distress", "chonk", "tsew", "chit", "oakalee", "dickcissel", "oriole?", "yellowthroat"), color=c("#E41A1C","#E41A1C", "#4DAF4A", "#4DAF4A", "#4DAF4A", "#FFFF33","#FFFF33", "#5e3c99", "#2b83ba", "#2b83ba", "#2b83ba"))
 
-
-plot(loc.result.trim$east, loc.result.trim$north, pch=21, xlim=c(min(loc.result.trim$east-20), max(loc.result.trim$east+20)), ylim=c(min(loc.result.trim$north-20), max(loc.result.trim$north+20)), bg=color.code[match(loc.result.trim$sound.type, color.code$type), "color"], las=1, xlab="Easting", ylab="Northing")
+par(mfrow=c(1,2))
+for(i in 1:length(loc.results.trim)){
+  loc.result.trim=loc.results.trim[[i]]
+plot(loc.result.trim$east, loc.result.trim$north, pch=21, xlim=c(min(loc.result.trim$east-20), max(loc.result.trim$east+20)), ylim=c(min(loc.result.trim$north-20), max(loc.result.trim$north+20)), bg=color.code[match(loc.result.trim$sound.type, color.code$type), "color"], las=1, xlab="Easting", ylab="Northing", main=treatment[i])
 #points(coords.xy, pch="x", col="black", cex=2)
 text(coords.xy$east, coords.xy$north,pch="x", col="black", cex=2, labels=rownames(coords.xy))
-legend("bottomleft", legend=color.code$type, pch=21, pt.bg=color.code$color)
+legend("bottomleft", legend=color.code$type, pch=21, pt.bg=color.code$color, bty="n")
+}
+
+##ggplot
+# 
+
+for(i in 1:length(loc.results.trim)){
+  loc.results.trim[[i]]$treatment=treatment[i]
+}
+loc.results.all=bind_rows(loc.results.trim)
+
+colors1=color.code[match(color.code[,1],sort(unique(loc.results.all$sound.type))),2]
+
+ggplot(loc.results.all, aes(x=east, y=north, color=sound.type))+
+   geom_point() + scale_color_manual(values=colors1) 
+
+loc.result.trim=loc.results.trim[[2]]
+
+
+png(filename="control_all.png")
+#plot layers
+xlims=c(min(loc.result.trim$east-20), max(loc.result.trim$east+20))
+ylims=c(min(loc.result.trim$north-20), max(loc.result.trim$north+20))
+plot(1, type="n", xlim=xlims, ylim=ylims, las=1, xlab="Easting", ylab="Northing", , xaxt="n", yaxt="n")
+text(coords.xy$east, coords.xy$north,pch="x", col="black", cex=2, labels=rownames(coords.xy))
+legend("bottomleft", legend=c("'Cheer' alarm", "Other RW alarm", "Dickcissel alarm", "RW song", "Other spp song"), pch=21, pt.bg=c("#E41A1C", "#4DAF4A", "#FFFF33", "#5e3c99", "#2b83ba"))
+
+#songs
+songs.result=loc.result.trim %>% filter(sound.type=="oakalee"|sound.type=="dickcissel"|sound.type=="yellowthroat"|sound.type=="oriole?")
+points(songs.result$east, songs.result$north, pch=21, xlim=xlims, ylim=ylims, bg=color.code[match(songs.result$sound.type, color.code$type), "color"], cex=1.2)
 
 #cheer only
 cheer.result=loc.result.trim %>% filter(sound.type=="cheer"|sound.type=="cheer var")
-plot(cheer.result$east, cheer.result$north, pch=21, xlim=c(min(cheer.result$east-20), max(cheer.result$east+20)), ylim=c(min(cheer.result$north-20), max(cheer.result$north+20)), bg=color.code[match(cheer.result$sound.type, color.code$type), "color"], las=1, xlab="Easting", ylab="Northing")
-#points(coords.xy, pch="x", col="black", cex=2)
-text(coords.xy$east, coords.xy$north,pch="x", col="black", cex=2, labels=rownames(coords.xy))
-legend("bottomleft", legend=color.code$type, pch=21, pt.bg=color.code$color)
+points(cheer.result$east, cheer.result$north, pch=21, xlim=xlims, ylim=ylims, bg=color.code[match(cheer.result$sound.type, color.code$type), "color"])
 
 #other RWBL
 other_rwbl.result=loc.result.trim %>% filter(sound.type=="check"|sound.type=="distress"|sound.type=="chonk")
-plot(other_rwbl.result$east, other_rwbl.result$north, pch=21, xlim=c(min(other_rwbl.result$east-20), max(other_rwbl.result$east+20)), ylim=c(min(other_rwbl.result$north-20), max(other_rwbl.result$north+20)), bg=color.code[match(other_rwbl.result$sound.type, color.code$type), "color"], las=1, xlab="Easting", ylab="Northing")
+points(other_rwbl.result$east, other_rwbl.result$north, pch=21, xlim=xlims, ylim=ylims, bg=color.code[match(other_rwbl.result$sound.type, color.code$type), "color"])
 #points(coords.xy, pch="x", col="black", cex=2)
-text(coords.xy$east, coords.xy$north,pch="x", col="black", cex=2, labels=rownames(coords.xy))
-legend("bottomleft", legend=color.code$type, pch=21, pt.bg=color.code$color)
 
 #tsew
 tsew.result=loc.result.trim %>% filter(sound.type=="tsew")
-plot(tsew.result$east, tsew.result$north, pch=21, xlim=c(min(tsew.result$east-20), max(tsew.result$east+20)), ylim=c(min(tsew.result$north-20), max(tsew.result$north+20)), bg=color.code[match(tsew.result$sound.type, color.code$type), "color"], las=1, xlab="Easting", ylab="Northing")
+points(tsew.result$east, tsew.result$north, pch=21, xlim=xlims, ylim=ylims, bg=color.code[match(tsew.result$sound.type, color.code$type), "color"])
 #points(coords.xy, pch="x", col="black", cex=2)
-text(coords.xy$east, coords.xy$north,pch="x", col="black", cex=2, labels=rownames(coords.xy))
-legend("bottomleft", legend=color.code$type, pch=21, pt.bg=color.code$color)
 
+dev.off()
 
 # 
 # png("plot_alarm_bp_2010630.png", width=8, height=8, units="in", res=150)
