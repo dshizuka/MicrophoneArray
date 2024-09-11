@@ -83,7 +83,7 @@ sapply(loc.results.trim, function(x) unique(x$sound.type))
 
 #sound.type.color=data.frame(type=unique(factor(loc.result.trim$sound.type)), color=brewer.pal(length(unique(factor(loc.result.trim$sound.type))), "Set1"))
 
-color.code=data.frame(type=c("cheer", "cheer var", "check", "distress", "chonk", "tsew", "chit", "oakalee", "dickcissel", "oriole?", "yellowthroat"), color=c("#E41A1C","#E41A1C", "#4DAF4A", "#4DAF4A", "#4DAF4A", "#FFFF33","#FFFF33", "#5e3c99", "#2b83ba", "#2b83ba", "#2b83ba"))
+color.code=data.frame(type=c("cheer", "cheer var", "check", "distress", "chonk", "chit","tsew",  "oakalee", "dickcissel", "oriole?", "yellowthroat"), color=c("#E41A1C","#E41A1C", "#4DAF4A", "#4DAF4A", "#4DAF4A", "#4DAF4A","#fec44f", "#5e3c99", "#2b83ba", "#2b83ba", "#2b83ba"))
 
 par(mfrow=c(1,2))
 for(i in 1:length(loc.results.trim)){
@@ -100,14 +100,14 @@ legend("bottomleft", legend=color.code$type, pch=21, pt.bg=color.code$color, bty
 for(i in 1:length(loc.results.trim)){
   loc.results.trim[[i]]$treatment=treatment[i]
 }
-loc.results.all=bind_rows(loc.results.trim)
+loc.results.all=bind_rows(loc.results.trim) %>% mutate(sound.type=factor(sound.type, levels=c("cheer", "cheer var", "check", "chonk", "chit", "distress", "tsew", "oakalee", "dickcissel", "oriole?", "yellowthroat")))
 
 colors1=color.code[match(color.code[,1],sort(unique(loc.results.all$sound.type))),2]
 
 ggplot(loc.results.all, aes(x=east, y=north, color=sound.type))+
-   geom_point() + scale_color_manual(values=colors1) 
+   geom_point() + scale_color_manual(values=colors1) +
+  facet_wrap(~treatment) 
 
-loc.result.trim=loc.results.trim[[2]]
 
 
 png(filename="control_all.png")
