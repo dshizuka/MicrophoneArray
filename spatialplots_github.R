@@ -83,7 +83,7 @@ sapply(loc.results.trim, function(x) unique(x$sound.type))
 
 #sound.type.color=data.frame(type=unique(factor(loc.result.trim$sound.type)), color=brewer.pal(length(unique(factor(loc.result.trim$sound.type))), "Set1"))
 
-color.code=data.frame(type=c("cheer", "cheer var", "check", "distress", "chonk", "chit","tsew",  "oakalee", "dickcissel", "oriole?", "yellowthroat"), color=c("#E41A1C","#E41A1C", "#4DAF4A", "#4DAF4A", "#4DAF4A", "#4DAF4A","#fec44f", "#5e3c99", "#2b83ba", "#2b83ba", "#2b83ba"))
+color.code=data.frame(type=c("cheer", "cheer var", "check", "distress", "chonk", "chit","tsew",  "oakalee", "dickcissel", "oriole?", "yellowthroat"), categories=c("'cheer' call", "'cheer' call", "RW other alarm", "RW other alarm", "RW other alarm", "RW other alarm","Other spp alarm",  "RW song", "Other spp song", "Other spp song", "Other spp song"), color=c("#E41A1C","#E41A1C", "#4DAF4A", "#4DAF4A", "#4DAF4A", "#4DAF4A","#fec44f", "#5e3c99", "#2b83ba", "#2b83ba", "#2b83ba"))
 
 par(mfrow=c(1,2))
 for(i in 1:length(loc.results.trim)){
@@ -91,26 +91,85 @@ for(i in 1:length(loc.results.trim)){
 plot(loc.result.trim$east, loc.result.trim$north, pch=21, xlim=c(min(loc.result.trim$east-20), max(loc.result.trim$east+20)), ylim=c(min(loc.result.trim$north-20), max(loc.result.trim$north+20)), bg=color.code[match(loc.result.trim$sound.type, color.code$type), "color"], las=1, xlab="Easting", ylab="Northing", main=treatment[i])
 #points(coords.xy, pch="x", col="black", cex=2)
 text(coords.xy$east, coords.xy$north,pch="x", col="black", cex=2, labels=rownames(coords.xy))
-legend("bottomleft", legend=color.code$type, pch=21, pt.bg=color.code$color, bty="n")
+legend("bottomleft", legend=color.code$categories, pch=21, pt.bg=color.code$color, bty="n")
 }
 
 ##ggplot
 # 
-
+#prepare and make a global data frame
 for(i in 1:length(loc.results.trim)){
   loc.results.trim[[i]]$treatment=treatment[i]
 }
-loc.results.all=bind_rows(loc.results.trim) %>% mutate(sound.type=factor(sound.type, levels=c("cheer", "cheer var", "check", "chonk", "chit", "distress", "tsew", "oakalee", "dickcissel", "oriole?", "yellowthroat")))
+loc.results.all=bind_rows(loc.results.trim) %>% left_join(., color.code, by=join_by("sound.type"=="type")) %>%
+  mutate(categories=factor(categories, level=c("'cheer' call", "RW other alarm", "Other spp alarm", "RW song", "Other spp song")))
 
-colors1=color.code[match(color.code[,1],sort(unique(loc.results.all$sound.type))),2]
+#set color palette
+colors2=color.code[match(sort(unique(loc.results.all$categories)), color.code[,2]),3]
+xlims=c(min(loc.result.trim$east-5), max(loc.result.trim$east+5))
+ylims=c(min(loc.result.trim$north-5), max(loc.result.trim$north+5))
 
-ggplot(loc.results.all, aes(x=east, y=north, color=sound.type))+
-   geom_point() + scale_color_manual(values=colors1) +
-  facet_wrap(~treatment) 
+ggplot(loc.results.all, aes(x=east, y=north, fill=categories))+
+   geom_point(pch=21) +
+  scale_fill_manual(values=colors2) +
+  facet_wrap(~treatment) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill="transparent"),
+        plot.background=element_rect(fill="transparent"),
+        legend.background=element_rect(fill="transparent"),
+        legend.box.background=element_rect(fill="transparent"))+
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
 
+ggsave("microphonearray_plot_bothtreatment.png", bg="transparent")
 
+#cheer only
+ggplot(loc.results.all%>%filter(categories=="'cheer' call"), aes(x=east, y=north, fill=categories))+
+  geom_point(pch=21, size=3, fill=color.code[which(color.code$categories=="'cheer' call"),3][1]) +
+  facet_wrap(~treatment) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill="transparent"),
+        plot.background=element_rect(fill="transparent"),
+        legend.background=element_rect(fill="transparent"),
+        legend.box.background=element_rect(fill="transparent"))+
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
 
-png(filename="control_all.png")
+ggsave("microphonearray_plot_cheeronly.png", bg="transparent", width=10, height=5, units="in")
+
+#songs only
+ggplot(loc.results.all%>%filter(categories=="RW song"|categories=="Other spp song"), aes(x=east, y=north, fill=categories))+
+  geom_point(pch=21, size=3) +
+  scale_fill_manual(values=c("#5e3c99", "#2b83ba"), guide="none") +
+  facet_wrap(~treatment) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill="transparent"),
+        plot.background=element_rect(fill="transparent"),
+        legend.background=element_rect(fill="transparent"),
+        legend.box.background=element_rect(fill="transparent"))+
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggsave("microphonearray_plot_songsonly.png", bg="transparent", width=10, height=5, units="in")
+
+#other alarms only
+ggplot(loc.results.all%>%filter(categories=="Other spp alarm"), aes(x=east, y=north, fill=categories))+
+  geom_point(pch=21, size=3) +
+  scale_fill_manual(values="#fec44f", guide="none") +
+  facet_wrap(~treatment) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill="transparent"),
+        plot.background=element_rect(fill="transparent"),
+        legend.background=element_rect(fill="transparent"),
+        legend.box.background=element_rect(fill="transparent"))+
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggsave("microphonearray_plot_otheralarms.png", bg="transparent", width=10, height=5, units="in")
+
 #plot layers
 xlims=c(min(loc.result.trim$east-20), max(loc.result.trim$east+20))
 ylims=c(min(loc.result.trim$north-20), max(loc.result.trim$north+20))
