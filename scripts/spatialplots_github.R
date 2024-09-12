@@ -12,6 +12,7 @@ library(sp)
 library(RColorBrewer)
 library(ggplot2)
 library(gganimate)
+library(gifski)
 
 options(digits=10)
 filename=list.files("data/xcorr_results", full.names=T)
@@ -211,6 +212,7 @@ trans_state[plot_data$time>time_breaks[i]&plot_data$time<time_breaks[i+1]]=i
 trans_state
 plot_data$trans_state=trans_state
 
+#manually produce pngs
 for(i in 1:10){
 p=ggplot(plot_data  %>% filter(trans_state==i), aes(x=east, y=north))+
   geom_point() +
@@ -222,3 +224,15 @@ p=ggplot(plot_data  %>% filter(trans_state==i), aes(x=east, y=north))+
 p
 ggsave(paste("density_plot-", i, ".png", sep=""), bg="transparent", width=10, height=5, units="in")
 }
+
+q=ggplot(plot_data %>% filter(treatment=="control"), aes(x=east, y=north))+
+  geom_point() +
+  geom_density_2d_filled(contour_var="ndensity", bins=10) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme(legend.position="none")+
+  ggtitle("control")
+
+anim=q+transition_states(trans_state, transition_length=2)
+mygif=animate(anim, nframe=10, fps=2, renderer=gifski_renderer(loop=FALSE))
+anim_save(filename="control.gif", mygif)
