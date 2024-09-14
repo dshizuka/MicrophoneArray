@@ -194,7 +194,7 @@ ggsave("plots/microphonearray_plot_RWotheralarms_altcolor.png", bg="transparent"
 ### let's add kernel density
 
 
-ggplot(simple.data %>% filter(time>200&time<300)%>% filter(treatment=="control") , aes(x=east, y=north))+
+ggplot(plot_data %>% filter(time>200&time<300)%>% filter(treatment=="control") , aes(x=east, y=north))+
   geom_point() +
   geom_density_2d_filled(contour_var="count", bins=10) +
   xlim(xlims) +
@@ -235,4 +235,20 @@ q=ggplot(plot_data %>% filter(treatment=="control"), aes(x=east, y=north))+
 
 anim=q+transition_states(trans_state, transition_length=2)
 mygif=animate(anim, nframe=10, fps=2, renderer=gifski_renderer(loop=FALSE))
-anim_save(filename="control.gif", mygif)
+mygif
+#anim_save(filename="control.gif", mygif)
+
+
+plot_data=plot_data %>% mutate(sec=floor(time)) %>% select(-time)
+q2=ggplot(plot_data %>% filter(treatment=="alarm"), aes(x=east, y=north, fill=categories))+
+  geom_point(aes(group=sec), pch=21, size=5, alpha=0.5) +
+  scale_fill_manual(values=colors2, guide="none") +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+q2
+anim2=q2+transition_reveal(sec) + labs(title="{frame_along}")
+anim3=q2+transition_manual(sec, cumulative=T) + labs(title="{frame_along}")
+animate(anim3, fps=2)
+#animate(anim2, fps=2, renderer=gifski_renderer(loop=FALSE))
