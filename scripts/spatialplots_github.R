@@ -85,7 +85,7 @@ sapply(loc.results.trim, function(x) unique(x$sound.type))
 
 #sound.type.color=data.frame(type=unique(factor(loc.result.trim$sound.type)), color=brewer.pal(length(unique(factor(loc.result.trim$sound.type))), "Set1"))
 
-color.code=data.frame(type=c("cheer", "cheer var", "check", "distress", "chonk", "chit","tsew",  "oakalee", "dickcissel", "oriole?", "yellowthroat"), categories=c("'cheer' call", "'cheer' call", "RW other alarm", "RW other alarm", "RW other alarm", "RW other alarm","Other spp alarm",  "RW song", "Other spp song", "Other spp song", "Other spp song"), color=c("#E41A1C","#E41A1C", "#4DAF4A", "#4DAF4A", "#4DAF4A", "#4DAF4A","#fec44f", "#5e3c99", "#2b83ba", "#2b83ba", "#2b83ba"), color2=c("#b30000", "#b30000", "#e34a33", "#fc8d59", "#fc8d59", "#fc8d59", "#fdcc8a", "#253494","#41b6c4", "#41b6c4", "#41b6c4"))
+color.code=data.frame(type=c("cheer", "cheer var", "check", "distress", "chonk", "chit","tsew",  "oakalee", "dickcissel", "oriole?", "yellowthroat", "dummy"), categories=c("'cheer' call", "'cheer' call", "RW other alarm", "RW other alarm", "RW other alarm", "RW other alarm","Other spp alarm",  "RW song", "Other spp song", "Other spp song", "Other spp song", "dummy"), color=c("#E41A1C","#E41A1C", "#4DAF4A", "#4DAF4A", "#4DAF4A", "#4DAF4A","#fec44f", "#5e3c99", "#2b83ba", "#2b83ba", "#2b83ba", "white"), color2=c("#b30000", "#b30000", "#e34a33", "#fc8d59", "#fc8d59", "#fc8d59", "#fdcc8a", "#253494","#41b6c4", "#41b6c4", "#41b6c4", "white"))
 
 
 
@@ -105,8 +105,8 @@ for(i in 1:length(loc.results.trim)){
   loc.results.trim[[i]]$treatment=treatment[i]
 }
 plot_data=bind_rows(loc.results.trim) %>% left_join(., color.code, by=join_by("sound.type"=="type")) %>%
-  mutate(categories=factor(categories, level=c("'cheer' call", "RW other alarm", "Other spp alarm", "RW song", "Other spp song"))) %>% select(north, east, time, sound.type, treatment, categories, color, color2)
-
+  mutate(categories=factor(categories, level=c("'cheer' call", "RW other alarm", "Other spp alarm", "RW song", "Other spp song", "dummy"))) %>% select(north, east, time, sound.type, treatment, categories, color, color2)
+plot_data=plot_data %>% mutate(sec=floor(time)) %>% select(-time)
 
 #set color palette
 colors2=color.code[match(sort(unique(plot_data$categories)), color.code[,2]),4]
@@ -213,17 +213,17 @@ trans_state
 plot_data$trans_state=trans_state
 
 #manually produce pngs
-for(i in 1:10){
-p=ggplot(plot_data  %>% filter(trans_state==i), aes(x=east, y=north))+
-  geom_point() +
-  geom_density_2d_filled(contour_var="ndensity", bins=10) +
-  xlim(xlims) +
-  ylim(ylims) +
-  theme(legend.position="none")+
-  facet_wrap(~treatment)
-p
-ggsave(paste("density_plot-", i, ".png", sep=""), bg="transparent", width=10, height=5, units="in")
-}
+# for(i in 1:10){
+# p=ggplot(plot_data  %>% filter(trans_state==i), aes(x=east, y=north))+
+#   geom_point() +
+#   geom_density_2d_filled(contour_var="ndensity", bins=10) +
+#   xlim(xlims) +
+#   ylim(ylims) +
+#   theme(legend.position="none")+
+#   facet_wrap(~treatment)
+# p
+# ggsave(paste("density_plot-", i, ".png", sep=""), bg="transparent", width=10, height=5, units="in")
+# }
 
 q=ggplot(plot_data %>% filter(treatment=="control"), aes(x=east, y=north))+
   geom_point() +
@@ -239,7 +239,8 @@ mygif
 #anim_save(filename="control.gif", mygif)
 
 
-plot_data=plot_data %>% mutate(sec=floor(time)) %>% select(-time)
+
+
 q2=ggplot(plot_data %>% filter(treatment=="alarm"), aes(x=east, y=north, fill=categories))+
   geom_point(aes(group=sec), pch=21, size=5, alpha=0.5) +
   scale_fill_manual(values=colors2, guide="none") +
@@ -252,3 +253,26 @@ anim2=q2+transition_reveal(sec) + labs(title="{frame_along}")
 anim3=q2+transition_manual(sec, cumulative=T) + labs(title="{frame_along}")
 animate(anim3, fps=2)
 #animate(anim2, fps=2, renderer=gifski_renderer(loop=FALSE))
+
+###
+plot_data_fill=tibble(time=1:300) %>% 
+  full_join(., plot_data, by=join_by("time"=="sec")) %>%
+  mutate(east=replace_na(east, 279010)) %>%
+  mutate(north=replace_na(north, 4565830)) %>%
+  mutate(categories=replace_na(categories, "dummy")) %>%
+  mutate(color=replace_na(color, "white")) %>%
+  mutate(color2=replace_na(color2, "white"))
+  
+colors2=color.code[match(sort(unique(plot_data_fill$categories)), color.code[,2]),4]
+xlims=c(min(plot_data_fill$east-5), max(plot_data_fill$east+5))
+ylims=c(min(plot_data_fill$north-5), max(plot_data_fill$north+5))
+q2=ggplot(plot_data_fill %>% filter(treatment!="control"), aes(x=east, y=north, fill=categories))+
+  geom_point(aes(group=time), pch=21, size=5, alpha=0.5) +
+  scale_fill_manual(values=colors2, guide="none") +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+q2
+anim2=q2+transition_time(time) + labs(title="{frame_time}")
+animate(anim2, fps=2, renderer=gifski_renderer(loop=FALSE))
