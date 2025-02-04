@@ -194,7 +194,7 @@ ggsave("plots/microphonearray_plot_RWotheralarms_altcolor.png", bg="transparent"
 ### let's add kernel density
 
 
-ggplot(plot_data %>% filter(time>200&time<300)%>% filter(treatment=="control") , aes(x=east, y=north))+
+ggplot(plot_data %>% filter(sec>200&sec<300)%>% filter(treatment=="control") , aes(x=east, y=north))+
   geom_point() +
   geom_density_2d_filled(contour_var="count", bins=10) +
   xlim(xlims) +
