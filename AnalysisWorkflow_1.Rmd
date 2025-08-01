@@ -1,0 +1,494 @@
+---
+title: "Analysis Workflow_1"
+author: "Dai Shizuka"
+date: "updated `r format(Sys.time(), '%m/%d/%y')` "
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, message=F}
+library(stringr)
+library(lubridate)
+library(tidyverse)
+library(seewave)
+library(warbleR)
+library(ggmap)
+```
+This document describes the workflow for analyzing recordings from a microphone array to estimate location and timing of sounds. 
+
+## 1. The Setup & Recordings
+
+- We set up microphone arrays at 5 different plots around Lake Ogallala. 
+- Each plot surrounded multiple red-winged blackbird colonies.
+- At each location we set up 5 fence posts, roughly in a square or rectangle, with another post in the middle.
+- We took high-precision GPS points with Trimble Geo 7x GPS unit.
+- We attached 4 Wildlife Acoustics SM4TS units at each outside post, then used a microphone extension cable from one of the units to attach a microphone on the center post.
+- The recording units were programmed to start recording at the same time, though the end and start times of the 20-minute files drift between units.
+- We recorded natural soundscapes as well as soundscapes during experimental presentations of a female cowbird mount or tree swallow mount.
+
+```{r, echo=FALSE, out.height="25%", out.width="25%", fig.cap="Trimble GPS 7x", fig.align='center', include=F}
+knitr::include_graphics("images_analysis/TrimbleGeo7.jpg")
+```
+
+Importing the file with GPS locations of each post at each plot:
+```{r}
+locations = read.csv("Microphone Array_Analysis/micarray_trimblewaypoints_2021.csv")
+```
+
+***
+
+## 2. Aligning sound files and producing multichannel recording file
+
+- This script requires the file structure that Faiza put together (each day in separate folder, and each recording unit in separate folders labelled "TS1" through "TS4"). HOWEVER, I had to change the folder names to have the dates in ymd format (i.e., "2021-07-01_..." instead of "1July...")
+
+- This script can now handle cases where the trial spans two tracks. In some cases, there is a few seconds of missing sounds when this happens. In such cases, this code will generate a silent track to fill in those seconds. 
+
+- It should also handle at least some of the cases where the relevant track is missing. Right now, it does this by recognizing when the last track for that recorder started more than one hour before the target start time. In such cases, it will just generate a silent track that spans the trial for that channel. This avoids confusion of what is missing--in the multichannel file, the missing recorder will just be silent. 
+
+### 2.1. Import sound file data:
+
+This is a file that contains info on which location, date, start and end time to extract and produce aligned multichannel files for:
+```{r}
+extract.times.dat=read.csv("sounds_to_extract_20220501.csv")
+extract.times.dat$ymd=mdy(extract.times.dat$Date)
+extract.times.dat
+```
+
+### 2.2. Extract the start time from the file names
+
+Use the list.files() function to get the names of folders in the SM4TS recordings. *I have renamed these folders with the date format that is much easier to parse: (e.g., "2021-07-01_Stripies" instead of "1July_Stripies"). This way, the dates in the folder names match the "ymd" format.
+
+```{r}
+rawfoldernames=list.files("SM4TS Recordings", full.names = T)
+head(rawfoldernames)
+```
+
+We can match up each trial to the folder we want to look at. For example, which folder should we look in to get the first trial (July 5th, 2021 at Stripies)?
+```{r}
+focal=1
+#nrow(extract.times.dat)
+#for(focal in 14:17){
+#grep(extract.times.dat$ymd[focal], rawfoldernames)
+
+#using this, we assign the folder to use
+
+use.folder=rawfoldernames[grep(extract.times.dat$ymd[focal], rawfoldernames)]
+use.folder
+```
+
+Now, we will extract all of the start and stop recording times for each of the recorders from that day.
+
+The folder for each date has separate folders for each recording unit. 
+list.files(use.folder)
+
+However, since the filename ultimately has the recorder name too, we don't really need the subfolder names here. We can just write a code to extract all file names in all folders within that date. Just list the .wav files (ignore the summary .txt files)
+
+We'll save the "full path name" version and "short path name" version separately. The full name version will be useful when we actually extract the sound files. The short name version will be useful for the next code to extract metadata.
+
+```{r}
+use.files.full=list.files(path=paste(use.folder, list.files(use.folder), sep="/"), pattern=".wav", full.names = T)
+```
+
+```{r}
+use.files.short=list.files(path=paste(use.folder, list.files(use.folder), sep="/"), pattern=".wav", full.names = F)
+```
+
+**Note:** Since the recorder names are naturally in the file names, there is not really any need to sort the files into subfolders by recorder...
+
+It turns our there is a super handy function called songmeter() function in seewav. This imports relevant data from songmeter file names
+```{r}
+file.metadata=songmeter(use.files.short)
+file.metadata$filepath=use.files.full
+head(file.metadata)
+```
+
+Ok, now let's identify which file (or files, if the desired trial is split between two files) contains the focal trial sounds for each recorder.
+
+Get the first trial
+
+Convert the target start and end times into ymd_hms format, in the time zone that the computer is in...
+
+***The time zone is set to the computer's time zone, but it doesn't really matter because the extracted time stamps from the file names don't have a time zone associated. It's just that the `ymd_hms()` function needs a time zone***
+
+```{r}
+extract.times.dat$start.date.time=ymd_hms(paste(extract.times.dat$ymd, extract.times.dat$Start.Time, sep=" "), tz=Sys.timezone())
+
+extract.times.dat$end.date.time=ymd_hms(paste(extract.times.dat$ymd, extract.times.dat$End.Time, sep=" "), tz=Sys.timezone())
+
+start=extract.times.dat$start.date.time[focal]
+end=extract.times.dat$end.date.time[focal]
+
+start
+end
+```
+
+```{r}
+file.metadata.split=split(file.metadata, file.metadata$prefix)
+
+start_and_endfile.list=lapply(file.metadata.split, function(x){
+  start.file=max(which(x$time<=start))
+  end.file=max(which(x$time<=end))
+  c(start.file, end.file)
+})
+start_and_endfile.list
+```
+
+THIS IS COMPLEX, BUT IT LOOKS AT WHETHER THE TRIAL IS CONTAINED IN ONE FILE OR GOES ACROSS TWO FILES. IF IN ONE TRIAL, JUST READS THE SECTION OF THAT FILE. IF IT CROSSES TWO FILES, IT TAKES THE APPROPRIATE CLIPS FROM EACH FILE AND THEN CONCATENATES THE FILES
+
+```{r, eval=F}
+clips=list()
+for(i in 1:length(start_and_endfile.list)){
+  if(start_and_endfile.list[[i]][1]==start_and_endfile.list[[i]][2]) {
+    file.start.datetime=file.metadata.split[[i]][start_and_endfile.list[[i]][1],"time"]
+    start.at=as.numeric(difftime(start,file.start.datetime, units="secs"))
+    end.at=as.numeric(difftime(end,file.start.datetime, units="secs"))
+    if(start.at<3600) clip=readWave(file.metadata.split[[i]]$filepath[start_and_endfile.list[[i]][1]], from=start.at, to=end.at, units="seconds") else {
+      left=synth(f=44100, d=as.numeric(difftime(end,start, unit="secs")), cf=100, a=0, output="Wave")
+      right=synth(f=44100, d=as.numeric(difftime(end,start, unit="secs")), cf=100, a=0, output="Wave")
+      clip=stereo(left, right)
+    }
+    clips[[i]]=clip
+  } else if(start_and_endfile.list[[i]][1]!=start_and_endfile.list[[i]][2]) {
+    file1.start.datetime=file.metadata.split[[i]][start_and_endfile.list[[i]][1],"time"]
+    start.at1=as.numeric(difftime(start,file1.start.datetime, units="secs"))
+    end.at1=Inf
+    start.at2=0
+    file2.start.datetime=file.metadata.split[[i]][start_and_endfile.list[[i]][2],"time"]
+    end.at2=as.numeric(difftime(end,file2.start.datetime, units="secs"))
+    clip1=readWave(file.metadata.split[[i]]$filepath[start_and_endfile.list[[i]][1]], from=start.at1, to=end.at1, units="seconds")
+    clip2=readWave(file.metadata.split[[i]]$filepath[start_and_endfile.list[[i]][2]], from=start.at2, to=end.at2, units="seconds")
+    missing.time=as.numeric(difftime(end,start, unit="secs"))-(duration(clip1)+duration(clip2))
+    if(missing.time>0) {
+      sil_left=synth(f=44100,d=missing.time, cf=100,a=0, output="Wave")
+      sil_right=synth(f=44100,d=missing.time, cf=100,a=0, output="Wave")
+      sil_stereo=stereo(sil_left, sil_right)
+      clips[[i]]=tuneR::bind(clip1, sil_stereo,clip2)
+    } else clips[[i]]=tuneR::bind(clip1, clip2)
+  }
+}
+
+MC_trial=WaveMC(data=list(clips[[1]]@right, clips[[2]]@left, clips[[3]]@left, clips[[4]]@left, clips[[1]]@left), samp.rate=44100, bit=16)
+
+colnames(MC_trial)=MCnames$name[1:5]
+#tweak this to get left/right microphones of TS2-4 based on colony.
+
+#proper file name
+
+file.date=paste(mdy(extract.times.dat$Date[focal])) %>% gsub("-","",.)
+
+file.time.vec=extract.times.dat$Start.Time[focal] %>% str_split(pattern=":") %>% unlist() %>% str_pad(width=2, pad="0")
+file.time=paste(file.time.vec[1],file.time.vec[2],file.time.vec[3], sep="")
+MC_filename=paste("MC", paste(file.date, file.time, sep="$"), ".wav", sep="")
+#add colony name and trial type
+
+#UNCOMMENT HERE TO ACTUALLY SAVE THE FILE
+#writeWave(MC_trial, filename=MC_filename)
+
+```
+
+***
+
+## 3. Annotating aligned sound files
+
+Once the multichannel file is created, we need to go through and annotate the sounds. We do this in Raven Pro.
+
+We choose the best exemplar of a given sound across all 5 channels. and select the sound. This saves a text file that contains information on the start time, end time, and frequency range of the sound of interest.
+
+
+```{r, echo=FALSE, fig.cap="", fig.align='center', include=T}
+knitr::include_graphics("images_analysis/MC_annotation.png")
+```
+
+**The main questions to work on here:**
+
+* **We should look at best strategies for annotating overlapping sounds!**
+
+***
+
+## 4. Cross-correlations to get relative time delays at each microphone
+
+This uses the annotation file to cut out "template" sounds. Then, it runs a cross-correlation through all 5 channels with a time window of 1 second before to 1 second after the sound. It then identifies the precise timing of the peak correlation with the template sound at each microphone. This gives us the time delay of arrival of the sound at each microphone.
+
+This is the most computationally intensive part of the process. The basic process proceeds as follows:
+
+1. Extract each "template sound" annotations (see Section 3)
+
+2. Take out a slice of recording from each channel that spans +/- 0.5 seconds before and after the sound.
+
+3. Run cross-correlation analysis between the template sound and each of the 5 channels (including the channel that the template sound was taken from). Use 99% overlap to get high-resolution results
+
+4. Record the peak score and peak time. If it works well, the relative delay in "peak time" across the five channels will tell us the relative time delay that we will use for triangulating the sound.
+
+```{r, echo=FALSE, fig.cap="", fig.align='center', include=T}
+knitr::include_graphics("images_analysis/MC_annotation_window.png")
+```
+
+The annotated code (not run here).
+```{r, eval=F}
+library(seewave)
+library(lubridate)
+library(warbleR)
+library(stringr)
+library(tidyverse)
+library(foreach)
+library(doParallel)
+options(digits=10)
+
+#set up parallel processing
+n.cores=detectCores()
+registerDoParallel(n.cores)
+
+#find folders where the multi-channel sound files + annotation files are stored. Choose one.
+folders.full=list.files("Microphone Array_Analysis",pattern="MC", full.names=T)
+folders.short=list.files("Microphone Array_Analysis", pattern="MC", full.names=F)
+use.folder=folders.full[7]
+use.folder.short=folders.short[7]
+mc_track_full=list.files(use.folder, pattern=".wav", full.names = T)
+mc_track_short=list.files(use.folder, pattern=".wav", full.names = F)
+
+annot=read.table(list.files(use.folder, pattern=".txt", full.names = T), header=T, sep="\t")
+
+names(annot)
+
+seltab=annot %>% mutate(sound.files=mc_track_short) %>% select(sound.files, channel=Channel, start=Begin.Time..s., end=End.Time..s., bottom.freq=Low.Freq..Hz., top.freq=High.Freq..Hz., type=Label)
+
+seltab$selec=seq(1:nrow(seltab))
+seltab$channel=as.numeric(seltab$channel)
+
+#this creates the "template" sounds and saves them into a folder
+dir.create(paste(use.folder, "templates", sep="/")) #creates a new folder called "templates" within the focal folder.
+cut_sels(seltab, path=use.folder, dest.path=paste(use.folder, "templates", sep="/"))
+
+#set up cross correlations
+
+#first, we need to make a selection table for each template. This will include the template track and the test track clips that will be compared
+#The original code creates a temporary file extracted from the templates folder, then runs the cross correlation, then deletes it. However, when running this in parallel, we end up with multiple template files ported at once, so it gets confused. Need to fix this by...
+
+temp_names=list.files(paste(use.folder, "templates", sep="/"))
+if(is.na(match(mc_track_short, temp_names))==F) temp_names=temp_names[-match(mc_track_short, temp_names)]
+
+file_order=as.numeric(str_sub(temp_names, start=str_locate(temp_names, "-")[,1]+1, end=str_locate(temp_names, "\\.")[,1]-1))
+
+#result.df=list()
+#copy full multichannel file over to template subfolder (we need all sound files to be in same folder to run the cross correlation). 
+
+if(is.na(match(mc_track_short, list.files(paste(use.folder, "templates", sep="/"))))==T) file.copy(from=list.files(use.folder, pattern=".wav", full.names = T), to=paste(use.folder, "templates", sep="/"))
+
+ptm=proc.time()
+
+result.df=foreach(k = 1:nrow(annot), .inorder=TRUE) %dopar% {
+  temp.df=data.frame(sound.files=temp_names[order(file_order)][k], channel=1, selec=1, start=0, end=duration_sound_files(paste(use.folder, "templates", temp_names[order(file_order)][k], sep="/"))$duration)
+  
+  track.df=data.frame(sound.files=mc_track_short, channel=1:5, selec=1:5, start=seltab$start[k]-0.5, end=seltab$end[k]+0.5)
+track.df$start[which(track.df$start<0)]=0
+  
+  bp_filter=c(seltab$bottom.freq[k]/1000-0.1, seltab$top.freq[k]/1000+0.1)
+  bp_filter[which(bp_filter<0)]=0
+  set=rbind(temp.df, track.df)
+  
+  
+  
+  #run cross-correlation
+  xc=list()
+  for(j in 1:(nrow(set)-1)){
+    xc[[j]]=cross_correlation(set[c(1,1+j),], bp=bp_filter, output="list", ovlp=99, path=paste(use.folder,"templates",sep="/"))
+  }
+  #xc
+  
+  # times=sapply(xc, function(x) {
+  #   if(is.na(x$scores$score[1])) NA else x$scores$time[which.max(x$scores$score)]
+  # })
+  #times
+  peak.score=sapply(xc, function(x) max(x$scores$score))
+  #peak.score
+  
+  
+  data.frame(trial=k, call_type=annot$Label[k], annotated_mic=annot$Channel[k], template=temp.df$sound.file, channel=set[2:6,"channel"], peak.time=times, peak.score=peak.score)
+}
+
+proc.time()-ptm
+stopImplicitCluster()
+###
+
+save(result.df, file=paste(use.folder, "xcorr.results_99_bpfilter.rdata", sep="/"))
+```
+
+```{r, echo=F, eval=F}
+#run one time to save an example of xc
+save(xc, file="xc_example__2.rdata")
+```
+
+Here is an visualization of what the cross-correlation results. The lines represents cross-correlation between the template and the clip across different channels. There are only four lines here because one of the microphones was not running at this time, I think. 
+```{r}
+load("xc_example.rdata")
+plot(xc[[1]]$scores$time, xc[[1]]$scores$score, type="l", ylim=c(0.5,1))
+points(xc[[2]]$scores$time, xc[[2]]$scores$score, type="l", ylim=c(0.5,1))
+points(xc[[3]]$scores$time, xc[[3]]$scores$score, type="l", ylim=c(0.5,1))
+points(xc[[4]]$scores$time, xc[[4]]$scores$score, type="l", ylim=c(0.5,1))
+points(xc[[5]]$scores$time, xc[[5]]$scores$score, type="l", ylim=c(0.5,1))
+
+```
+What the script above does is save the "peak correlation score" (the apex of the "point" you see in each line) and the time (# of seconds from the beginning of the recording). The differences in these times are used as the relative delays in the arrival of the sound to each microphone.
+
+
+But there are cases where the cross-correlation doesn't always generate a clear peak... This is something we need to solve.
+
+```{r}
+load("xc_example__2.rdata")
+plot(xc[[1]]$scores$time, xc[[1]]$scores$score, type="l", ylim=c(0.5,1))
+points(xc[[2]]$scores$time, xc[[2]]$scores$score, type="l", ylim=c(0.5,1))
+points(xc[[3]]$scores$time, xc[[3]]$scores$score, type="l", ylim=c(0.5,1))
+points(xc[[4]]$scores$time, xc[[4]]$scores$score, type="l", ylim=c(0.5,1))
+points(xc[[5]]$scores$time, xc[[5]]$scores$score, type="l", ylim=c(0.5,1))
+
+```
+
+
+Here is what the result would look like for one sound:
+```{r, echo=T}
+load("Microphone Array_Analysis/control_MC20210615$071000_bambi/xcorr.results_99_bpfilter.rdata")
+result.df[[1]]
+```
+
+Note that the peak score for one of the channels should be really high, approaching 1 (in this case, Channel 3). This would be the channel that the template sound was taken from.
+
+## 5. Using Sound Finder to localize sounds
+
+### 5.1. Install Sound Finder
+Here, we will use the R package *SoundFinder*[^1] to estimate the source location of each sound.
+
+To install SoundFinder, you will need to download the package from the supplemental materials of the paper: [http://dx.doi.org/10.1080/09524622.2013.827588](http://dx.doi.org/10.1080/09524622.2013.827588). Download the tar.gz file into the working directory and run the following code:
+
+```{r, eval=F}
+install.packages("SoundFinder_1.0.tar.gz", repos = NULL, type ='source')
+```
+
+### 5.2. Set up the process
+
+Now load the libraries you need.
+```{r, message=F}
+library(SoundFinder)
+library(tidyverse)
+library(stringr)
+library(geodist)
+#library(rgdal)
+library(sf)
+library(sp)
+library(RColorBrewer)
+library(ggplot2)
+```
+
+Load one of the result data from the cross-correlations in Part 4:
+(will need to change the path depending on your file structure)
+
+Here, I have all of the results of each trial stored in separate folders within a subfolder called "Microphone Array_Analysis". The subfolder names that start with "MC", followed by "date$time_site". For example, a trial for June 15, 2021 starting at 07:10:00am at Bambi is: "MC20210615$071000_bambi"
+
+```{r, echo=F}
+knitr::include_graphics("images_analysis/Filestructure_1.png")
+```
+
+To extract the .rdata file:
+```{r}
+folders=list.files("Microphone Array_Analysis", pattern="MC")
+use.folder=folders[3] #use the first folder. Change this to go through different folders.
+use.colony=str_sub(use.folder,str_locate_all(use.folder, "_")[[1]][2,1]+1) #find "_" in the folder name and extract what comes after that. 
+load(paste("Microphone Array_Analysis", use.folder, "xcorr.results_99_bpfilter.rdata", sep="/"))
+```
+
+
+Now, you need to load the microphone coordinates. Here, I've stored this info on a .csv file
+```{r}
+mic.positions.dat=read.csv("Microphone Array_Analysis/micarray_trimblewaypoints_2021.csv")
+mic.positions.dat
+```
+extract the mic positions for the site for the folder you selected above:
+```{r}
+mic.pos.use=mic.positions.dat[which(mic.positions.dat$SITE==use.colony),]
+mic.pos.use
+```
+
+
+
+```{r}
+plot(mic.positions.dat$long, mic.positions.dat$lat, type="n")
+text(mic.positions.dat$long, mic.positions.dat$lat, labels=mic.positions.dat$POSITION)
+```
+
+```{r}
+mic.positions.bp=mic.positions.dat[which(mic.positions.dat$SITE=="bp"),]
+plot(mic.positions.bp$long, mic.positions.bp$lat, type="n")
+text(mic.positions.bp$long, mic.positions.bp$lat, labels=mic.positions.bp$POSITION)
+```
+
+Now, convert the longitude and latitude info for the mic positions into utm. 
+I **THINK** I did this correctly... though I am not 100% sure because the latitude and longitude seemed like they were transposed when I plotted it...
+```{r}
+coords=SpatialPoints(cbind(mic.pos.use$long, mic.pos.use$lat), proj4string = CRS("+proj=longlat"))
+coords.utm=spTransform(coords, CRS("+proj=utm + zone=14 +datum=WGS84"))
+coords.utm.matrix=coords.utm@coords
+
+coords.xy=as.data.frame(coords.utm.matrix)
+#coords.xy[,1]=coords.xy[,1]-min(coords.xy[,1])
+#coords.xy[,2]=coords.xy[,2]-min(coords.xy[,2])
+
+names(coords.xy)=c("east", "north")
+coords.xy
+```
+
+```{r}
+plot(coords.xy[,1], coords.xy[,2], pch="x", xlim=c(min(coords.xy[,1]-5), max(coords.xy[,1]+5)), ylim=c(min(coords.xy[,2]-5), max(coords.xy[,2]+5)))
+text(x=coords.xy[,1], y=coords.xy[,2], labels=1:5, pos=2)
+```
+
+
+```{r}
+knitr::include_graphics("images_analysis/site_bp.png")
+```
+
+```{r}
+
+sound.type=sapply(result.df, function(x) x$call_type[1])
+
+sound.results=as.data.frame(t(sapply(result.df, function(x) x$peak.time)))
+names(sound.results)=c("t1", "t2", "t3", "t4", "t5")
+temps=rep(21.5, nrow(sound.results))
+
+loc.result=localize(mics=coords.xy, sounds=sound.results, temps=temps)
+loc.result$sound.type=sound.type
+loc.result$low.peak.score=sapply(result.df, function(x) min(x$peak.score, na.rm=T))
+
+plot(loc.result$north, loc.result$east, pch=21, bg=gray(loc.result$err.metres/max(loc.result$err.metres)))
+
+```
+
+```{r}
+
+plot(err.metres~sound.type, data=loc.result %>% filter(err.metres<500))
+
+rare.voc=names(which(table(loc.result$sound.type)<5))
+loc.result.trim=loc.result %>%
+  filter(!sound.type%in%rare.voc) %>%
+  filter(north<max(coords.xy$north) & east<max(coords.xy$east) & north>min(coords.xy$north) & east>min(coords.xy$east)) 
+
+# loc.result.trim=loc.result %>% 
+#   filter(sound.type!=rare.voc) 
+
+sound.type.color=data.frame(type=unique(factor(loc.result.trim$sound.type)), color=brewer.pal(length(unique(factor(loc.result.trim$sound.type))), "Set1"))
+
+
+plot(loc.result.trim$east, loc.result.trim$north, pch=21, xlim=c(min(loc.result.trim$east-20), max(loc.result.trim$east+20)), ylim=c(min(loc.result.trim$north-20), max(loc.result.trim$north+20)), bg=sound.type.color[match(loc.result.trim$sound.type, sound.type.color$type), "color"], las=1, xlab="Easting", ylab="Northing", main=use.folder)
+#points(coords.xy, pch="x", col="black", cex=2)
+text(coords.xy$east, coords.xy$north,pch="x", col="black", cex=2, labels=rownames(coords.xy))
+legend("bottomleft", legend=sound.type.color$type, pch=21, pt.bg=sound.type.color$color)
+
+```
+
+***
+
+[^1]: Wilson, D.R., Battiston, M., Brzustowski, J., and Mennill, D.J. (2014) Sound Finder: a new software approach for localizing animals recorded with a microphone array. *Bioacoustics* 23:2, 99-112. 
