@@ -5,7 +5,7 @@ library(SoundFinder)
 library(tidyverse)
 library(stringr)
 library(geodist)
-library(rgdal)
+#library(rgdal)
 library(RColorBrewer)
 library(ggplot2)
 library(colors3d)
@@ -54,7 +54,7 @@ ggsave("colorgradient.pdf")
 loc.results_list=list()
 for (i in 1:length(results_list)){
   result.df=results_list[[i]]
-  sound.type=sapply(result.df, function(x) x$call_type[1]) %>% str_replace("oriole song?", "oriole")
+  sound.type=sapply(result.df, function(x) x$call_type[1]) %>% str_replace("oriole song\\?", "oriole") %>% str_replace("cheer var", "cheer")
   
   sound.results=as.data.frame(t(sapply(result.df, function(x) x$peak.time)))
   names(sound.results)=c("t1", "t2", "t3", "t4", "t5")
@@ -77,31 +77,32 @@ for(i in 1:length(loc.results_list)){
 
 loc.results.trim[[1]]
 
+loc.results.trim[[1]] %>% group_by(sound.type) %>% summarize(mean.err=mean(err.metres), median_err=median(err.metres), n_calls=n())
+
+i=1
+
+timeline_dat=loc.results.trim[[i]] %>% filter(sound.type!="oakalee" & sound.type!="yellowthroat")
+
+types=unique(timeline_dat$sound.type)
+#png(filename=paste("Timeline", treatment[i], "png",sep="."), width=8, height=6, units="in", res=300)
+par(mar=c(4, 7, 2,2))
+plot(seq(0, max(timeline_dat$time), length=length(types)), 1:length(types), type="n", xlab="Time", ylab="", yaxt="n", main=treatment[i])
+axis(2, at=1:length(types), labels=types, las=1)
+for(j in 1:nrow(timeline_dat)){
+  points(timeline_dat$time[j], match(timeline_dat$sound.type[j], types), pch="|", col=timeline_dat$colors2d[j])
+}
+#dev.off()
+
+## only cheers, chonks, checks, and distress calls
 sound.types=sapply(loc.results.trim, function(x) unique(x$sound.type))
 
 i=1
-types=unique(sound.types[[i]])
-
-png(filename=paste("Timeline", treatment[i], "png",sep="."), width=8, height=6, units="in", res=300)
-par(mar=c(4, 7, 2,2))
-plot(seq(0, max(loc.results.trim[[i]]$time), length=length(types)), 1:length(types), type="n", xlab="Time", ylab="", yaxt="n", main=treatment[i])
-axis(2, at=1:length(types), labels=types, las=1)
-for(j in 1:nrow(loc.results.trim[[i]])){
-  points(loc.results.trim[[i]]$time[j], match(loc.results.trim[[i]]$sound.type[j], types), pch="|", col=loc.results.trim[[i]]$colors2d[j])
-}
-dev.off()
-
-## only cheers and checks
-sound.types=sapply(loc.results.trim, function(x) unique(x$sound.type))
-
-i=2
-loc.result_2calls=loc.results.trim[[i]] %>% filter(sound.type=="check"|sound.type=="cheer")
+loc.result_2calls=loc.results.trim[[i]] %>% filter(sound.type=="check"|sound.type=="cheer"|sound.type=="chonk"|sound.type=="distress")
 
 types=unique(loc.result_2calls$sound.type)
 
-png(filename=paste("Timeline", treatment[i], "check_cheer", "png",sep="."), width=8, height=6, units="in", res=300)
-par(mar=c(4, 7, 2,2))
-plot(seq(0, max(loc.result_2calls$time), length=2), 1:2, type="n", xlab="Time", ylab="", yaxt="n", main=treatment[i], ylim=c(0,3))
+pdf(file=paste("Timeline", treatment[i], "check_cheer", "pdf", sep="."), width=8, height=3.5)
+plot(seq(0, max(loc.result_2calls$time), length=4), 1:4, type="n", xlab="Time", ylab="", yaxt="n", main=treatment[i], ylim=c(0.5,4.5))
 axis(2, at=1:length(types), labels=types, las=1)
 for(j in 1:nrow(loc.result_2calls)){
   points(loc.result_2calls$time[j], match(loc.result_2calls$sound.type[j], types), pch="|", cex=2, col=loc.result_2calls$colors2d[j])
@@ -109,18 +110,34 @@ for(j in 1:nrow(loc.result_2calls)){
 dev.off()
 
 ## or plot both on one line
-i=2
-loc.result_2calls=loc.results.trim[[i]] %>% filter(sound.type=="check"|sound.type=="cheer")
+i=1
+loc.result_2calls=loc.results.trim[[i]] %>% filter(sound.type=="check"|sound.type=="cheer"|sound.type=="chonk"|sound.type=="distress")
 
 types=unique(loc.result_2calls$sound.type)
 
-pdf(file=paste("Timeline", treatment[i], "check_cheer", "pdf",sep="."), width=8, height=2)
+pdf(file=paste("Timeline", treatment[i], "check_cheer_oneline", "pdf",sep="."), width=10, height=2)
 par(mar=c(4, 7, 2,2))
 plot(seq(0, max(loc.result_2calls$time), length=2), 1:2, type="n", xlab="Time", ylab="", yaxt="n", main=treatment[i], ylim=c(0.9,1.1))
 for(j in 1:nrow(loc.result_2calls)){
   points(loc.result_2calls$time[j],1, pch="|", cex=2, col=loc.result_2calls$colors2d[j])
 }
 dev.off()
+
+##just plot the songs
+
+i=2
+loc.result_2calls=loc.results.trim[[i]] %>% filter(sound.type=="oakalee")
+
+types=unique(loc.result_2calls$sound.type)
+
+pdf(file=paste("Timeline", treatment[i], "oakalee", "pdf", sep="."), width=8, height=3.5)
+plot(seq(0, max(loc.result_2calls$time), length=2), 1:2, type="n", xlab="Time", ylab="", yaxt="n", main=treatment[i], ylim=c(0.5,4.5))
+axis(2, at=1:length(types), labels=types, las=1)
+for(j in 1:nrow(loc.result_2calls)){
+  points(loc.result_2calls$time[j], match(loc.result_2calls$sound.type[j], types), pch="|", cex=2, col=loc.result_2calls$colors2d[j])
+}
+dev.off()
+
 
 ## plot in space, with raster as background
 for(i in 1:length(loc.results.trim)){

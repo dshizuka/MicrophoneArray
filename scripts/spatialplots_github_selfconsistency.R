@@ -13,6 +13,8 @@ library(RColorBrewer)
 library(ggplot2)
 library(gganimate)
 library(gifski)
+library(ggdensity)
+library(cowplot)
 
 options(digits=10)
 filename=list.files("data/xcorr_results", full.names=T)
@@ -136,6 +138,7 @@ legend("bottomleft", legend=color.code$categories, pch=21, pt.bg=color.code$colo
 for(i in 1:length(loc.results.trim)){
   loc.results.trim[[i]]$treatment=treatment[i]
 }
+
 plot_data=bind_rows(loc.results.trim) %>% left_join(., color.code, by=join_by("sound.type"=="type")) %>%
   mutate(categories=factor(categories, level=c("'cheer' call", "RW other alarm", "Other spp alarm", "RW song", "Other spp song", "dummy"))) %>% select(north, east, time, sound.type, treatment, categories, color, color2)
 plot_data=plot_data %>% mutate(sec=floor(time)) %>% select(-time)
@@ -225,13 +228,159 @@ ggsave("plots/microphonearray_plot_RWotheralarms_altcolor.png", bg="transparent"
 
 ### let's add kernel density
 
-
-ggplot(plot_data %>% filter(sec>200&sec<300)%>% filter(treatment=="control") , aes(x=east, y=north))+
-  geom_point() +
-  geom_density_2d_filled(contour_var="count", bins=10) +
+ggplot(plot_data %>% filter(sec>0&sec<20)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_density_2d_filled(contour_var="count", bins=5) +
+  geom_point(color="white") +
   xlim(xlims) +
   ylim(ylims) +
   annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggplot(plot_data %>% filter(sec>0&sec<50)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_density_2d_filled(contour_var="count", bins=5) +
+  geom_point(color="white") +
+  xlim(xlims) +
+  ylim(ylims) +
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggplot(plot_data %>% filter(sec>150&sec<200)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_density_2d_filled(contour_var="count", bins=5) +
+  geom_point(color="white") +
+  xlim(xlims) +
+  ylim(ylims) +
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+
+ggplot(plot_data %>% filter(sec>100&sec<150)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_density_2d_filled(contour_var="count", bins=5) +
+  geom_point(color="white") +
+  xlim(xlims) +
+  ylim(ylims) +
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+
+ggplot(plot_data %>% filter(sec>150&sec<200)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_density_2d_filled(contour_var="count", bins=5) +
+  geom_point(color="white") +
+  xlim(xlims) +
+  ylim(ylims) +
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggplot(plot_data %>% filter(sec>200&sec<300)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_density_2d_filled(contour_var="count", bins=5) +
+  geom_point(color="white") +
+  xlim(xlims) +
+  ylim(ylims) +
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+##with geom_hdr() from ggdensity
+#sliding window
+#plot_data = plot_data %>% filter(sound.type=="check"|sound.type=="distress"|sound.type=="cheer"|sound.type=="check var"|sound.type=="chonk"|sound.type=="chit"|sound.type=="tsew")
+
+p1=ggplot(plot_data %>% filter(sec>0&sec<50)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8), aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("0-50 seconds")
+
+p2=ggplot(plot_data %>% filter(sec>25&sec<75)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7))+
+  ggtitle("25-75 seconds")
+
+p3=ggplot(plot_data %>% filter(sec>50&sec<100)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("50-100 seconds")
+
+p4=ggplot(plot_data %>% filter(sec>75&sec<125)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("75-125 seconds")
+
+p5=ggplot(plot_data %>% filter(sec>100&sec<150)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("100-150 seconds")
+
+p6=ggplot(plot_data %>% filter(sec>125&sec<175)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("125-175 seconds")
+
+p7=ggplot(plot_data %>% filter(sec>150&sec<200)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("150-200 seconds")
+
+p8=ggplot(plot_data %>% filter(sec>175&sec<225)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("175-225 seconds")
+
+p9=ggplot(plot_data %>% filter(sec>200&sec<250)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("200-250 seconds")
+
+p10=ggplot(plot_data %>% filter(sec>225&sec<275)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("225-275 seconds")
+
+p11=ggplot(plot_data %>% filter(sec>250&sec<300)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("250-300 seconds")
+
+plot_grid(p1,p2,p3,p4,p5,p6, p7, p8, p9, p10, p11, nrow=2)
+ggsave("kde_plot_slidingwindow.pdf", width=12, height=4.5)
+
+
+
+## facet wrap
+
+plot_data=plot_data %>% mutate(timebin=ifelse(sec<=20, 0, ifelse(sec>20&sec<=100, 1, ifelse(sec>100&sec<=150, 2, ifelse(sec>150&sec<=200, 3, ifelse(sec>200&sec<=250, 4, ifelse(sec>250&sec<=300, 5,NA)))))))
+
+ggplot(plot_data %>%  filter(timebin>0) %>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(aes(fill = after_stat(probs)), alpha=0.5) +
+  xlim(xlims) +
+  ylim(ylims) +
+  facet_wrap(~timebin, ncol=1)+
+  geom_point(size=1, color=gray(0.2, alpha=0.7))
+
+ggsave("kde_plot.pdf", width=4, height=12)
 
 ### animate kernel density
 #set up transition states
