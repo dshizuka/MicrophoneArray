@@ -127,7 +127,7 @@ ggplot(plot_data, aes(x=east, y=north, fill=sound.type))+
   annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
 
 
-ggplot(plot_data %>% filter(sound.type=="song") %>% filter(treatment=="control 2") , aes(x=east, y=north))+
+ggplot(plot_data %>% filter(sound.type=="song") %>% filter(treatment=="control 2") %>% filter(species=="DICK") , aes(x=east, y=north))+
   geom_hdr(probs=c(0.99, 0.95, 0.90, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2), aes(fill = after_stat(probs)), alpha=1, show.legend=T) +
   geom_point()
 
