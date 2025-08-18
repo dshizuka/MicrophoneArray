@@ -1,0 +1,496 @@
+##Soundfinder
+## Nov 2023: rgdal is now depricated
+#For plotting results of initial trials at Beaver Pond
+
+#install.packages("SoundFinder_1.0.tar.gz", repos = NULL, type ='source')
+library(SoundFinder)
+library(tidyverse)
+library(stringr)
+library(geodist)
+library(sf)
+library(sp)
+library(RColorBrewer)
+library(ggplot2)
+library(gganimate)
+library(gifski)
+library(ggdensity)
+library(cowplot)
+
+options(digits=10)
+
+##need to reorder the sounds by their time.
+
+filename=list.files("data/xcorr_results", full.names=T)
+
+load(filename[1])
+times=sapply(result.df, function(x) x$peak.time[1])
+result_alarm1=result.df[order(times)]
+
+
+load(filename[2])
+times=sapply(result.df, function(x) x$peak.time[1])
+result_control1=result.df[order(times)]
+
+
+load(filename[3])
+times=sapply(result.df, function(x) x$peak.time[1])
+result_control2=result.df[order(times)]
+
+
+load(filename[4])
+times=sapply(result.df, function(x) x$peak.time[1])
+result_control3=result.df[order(times)]
+
+
+load(filename[5])
+times=sapply(result.df, function(x) x$peak.time[1])
+result_alarm2=result.df[order(times)]
+
+results_list_s1=list(result_alarm1, result_control1)
+results_list_s2=list(result_alarm2, result_control2, result_control3)
+
+treatment_s1=c("alarm", "control")
+treatment_s2=c("alarm",  "control", "control")
+
+##trial of self-consistency criterion from Lellouch et al. (2025)
+# df=results_list[[1]][[20]]
+# df
+# 
+# get_self_consistency=function(df){
+# sc=array(dim=c(5,5,5))
+# for(i in 1:5){
+#   for(j in 1:5){
+#     for(k in 1:5){
+#       if(i==j) next else{
+#         if(j==k) next else{
+#           if(i==k) next else{
+#             diff_ij=df$peak.time[i]-df$peak.time[j]
+#             diff_ik=df$peak.time[i]-df$peak.time[k]
+#             diff_jk=df$peak.time[j]-df$peak.time[k]
+#             sc[i,j,k]=diff_ij-(diff_ik-diff_jk)
+#           }
+#         }
+#       }
+#     }
+#   }
+# }
+# 
+# apply(sc,3,sum, na.rm=T)
+# }
+# 
+# get_self_consistency(df=results_list[[1]][[20]])
+# 
+# sapply(results_list[[2]], function(x) sum(get_self_consistency(x)))
+
+##
+
+#result.df
+
+mic.positions.dat=read.csv("data/micarray_trimblewaypoints_2021.csv")
+mic.pos.use=mic.positions.dat[which(mic.positions.dat$SITE=="beaver pond"),]
+
+#dist.matrix=geodist(mic.pos.use[,c("long","lat")])
+coords=SpatialPoints(cbind(mic.pos.use$long, mic.pos.use$lat), proj4string = CRS("+proj=longlat"))
+coords.utm=spTransform(coords, CRS("+proj=utm + zone=14 +datum=WGS84"))
+coords.utm.matrix=coords.utm@coords
+
+coords.xy=as.data.frame(coords.utm.matrix)
+#coords.xy[,1]=coords.xy[,1]-min(coords.xy[,1])
+#coords.xy[,2]=coords.xy[,2]-min(coords.xy[,2])
+
+names(coords.xy)=c("east", "north")
+coords.xy
+
+
+#hist(sapply(result.df, function(x) min(x$peak.score)), xlim=c(0,1))
+
+#drop channel with lowest peak score
+# for(i in 1:length(result.df)){
+#   result.df[[i]]$peak.time[which(result.df[[i]]$peak.score==min(result.df[[i]]$peak.score))]=NA
+#   result.df[[i]]$peak.score[which(result.df[[i]]$peak.score==min(result.df[[i]]$peak.score))]=NA
+# }
+# hist(sapply(result.df, function(x) min(x$peak.score, na.rm=T)), xlim=c(0,1))
+
+loc.results_list_s1=list()
+for (i in 1:length(results_list_s1)){
+  result.df=results_list_s1[[i]]
+sound.type=sapply(result.df, function(x) x$call_type[1]) %>% str_replace("oriole song\\?", "oriole")
+
+sound.results=as.data.frame(t(sapply(result.df, function(x) x$peak.time)))
+names(sound.results)=c("t1", "t2", "t3", "t4", "t5")
+temps=rep(21.5, nrow(sound.results))
+
+loc.result=localize(mics=coords.xy, sounds=sound.results, temps=temps)
+loc.result$sound.type=sound.type
+loc.result$low.peak.score=sapply(result.df, function(x) min(x$peak.score, na.rm=T))
+
+loc.results_list_s1[[i]]=loc.result
+}
+
+
+##save data frame in folder
+save(loc.results_list_s1, file="loc.results_list_s1.rdata")
+
+##for some reason, the second series that Aidan annotated starts with negative number for time. So remove the first line.
+loc.results_list_s2=list()
+for (i in 1:length(results_list_s2)){
+  result.df=results_list_s2[[i]]
+  sound.type=sapply(result.df, function(x) x$call_type[1])
+  sound.type=sound.type[-1]
+  
+  sound.results=as.data.frame(t(sapply(result.df, function(x) x$peak.time)))
+  names(sound.results)=c("t1", "t2", "t3", "t4", "t5")
+  sound.results=sound.results[-1,]
+  temps=rep(21.5, nrow(sound.results))
+  
+  loc.result=localize(mics=coords.xy, sounds=sound.results, temps=temps)
+  loc.result$sound.type=sound.type
+  loc.result$low.peak.score=sapply(result.df, function(x) min(x$peak.score, na.rm=T))[-1]
+  
+  loc.results_list_s2[[i]]=loc.result
+}
+
+
+##save data frame in folder
+save(loc.results_list_s2, file="loc.results_list_s2.rdata")
+######
+# plot(loc.result$north, loc.result$east, pch=21, bg=gray(loc.result$err.metres/max(loc.result$err.metres)))
+# 
+# plot(err.metres~sound.type, data=loc.result %>% filter(err.metres<500))
+
+loc.results.trim_s1=list()
+for(i in 1:length(loc.results_list_s1)){
+loc.results.trim_s1[[i]]=loc.results_list_s1[[i]] %>%
+  filter(north<max(coords.xy$north) & east<max(coords.xy$east) & north>min(coords.xy$north) & east>min(coords.xy$east)) 
+}
+
+sapply(loc.results.trim_s1, function(x) unique(x$sound.type))
+
+loc.results.trim_s2=list()
+for(i in 1:length(loc.results_list_s2)){
+  loc.results.trim_s2[[i]]=loc.results_list_s2[[i]] %>%
+    filter(north<max(coords.xy$north) & east<max(coords.xy$east) & north>min(coords.xy$north) & east>min(coords.xy$east)) 
+}
+
+sapply(loc.results.trim_s2, function(x) unique(x$sound.type))
+
+#sound.type.color=data.frame(type=unique(factor(loc.result.trim$sound.type)), color=brewer.pal(length(unique(factor(loc.result.trim$sound.type))), "Set1"))
+
+color.code=data.frame(type=c("cheer", "cheer var", "check", "distress", "chonk", "chit","tsew",  "oakalee", "dickcissel", "oriole?", "yellowthroat", "dummy"), categories=c("'cheer' call", "'cheer' call", "RW other alarm", "RW other alarm", "RW other alarm", "RW other alarm","Other spp alarm",  "RW song", "Other spp song", "Other spp song", "Other spp song", "dummy"), color=c("#E41A1C","#E41A1C", "#4DAF4A", "#4DAF4A", "#4DAF4A", "#4DAF4A","#fec44f", "#5e3c99", "#2b83ba", "#2b83ba", "#2b83ba", "white"), color2=c("#b30000", "#b30000", "#e34a33", "#fc8d59", "#fc8d59", "#fc8d59", "#fdcc8a", "#253494","#41b6c4", "#41b6c4", "#41b6c4", "white"))
+
+
+
+par(mfrow=c(1,2))
+for(i in 1:length(loc.results.trim_s1)){
+  loc.result.trim=loc.results.trim_s1[[i]]
+plot(loc.result.trim$east, loc.result.trim$north, pch=21, xlim=c(min(loc.result.trim$east-20), max(loc.result.trim$east+20)), ylim=c(min(loc.result.trim$north-20), max(loc.result.trim$north+20)), bg=color.code[match(loc.result.trim$sound.type, color.code$type), "color"], las=1, xlab="Easting", ylab="Northing", main=treatment[i])
+#points(coords.xy, pch="x", col="black", cex=2)
+text(coords.xy$east, coords.xy$north,pch="x", col="black", cex=2, labels=rownames(coords.xy))
+legend("bottomleft", legend=color.code$categories, pch=21, pt.bg=color.code$color, bty="n")
+}
+
+##ggplot
+# 
+#prepare and make a global data frame
+for(i in 1:length(loc.results.trim_s1)){
+  loc.results.trim_s1[[i]]$treatment=treatment_s1[i]
+}
+
+plot_data_s1=bind_rows(loc.results.trim_s1) %>% left_join(., color.code, by=join_by("sound.type"=="type")) %>%
+  mutate(categories=factor(categories, level=c("'cheer' call", "RW other alarm", "Other spp alarm", "RW song", "Other spp song", "dummy"))) %>% select(north, east, time, sound.type, treatment, categories, color, color2)
+
+plot_data_s1=plot_data_s1 %>% mutate(sec=floor(time)) %>% select(-time)
+
+#set color palette
+colors2=color.code[match(sort(unique(plot_data_s1$categories)), color.code[,2]),4]
+xlims=c(min(loc.result.trim$east-5), max(loc.result.trim$east+5))
+ylims=c(min(loc.result.trim$north-5), max(loc.result.trim$north+5))
+
+ggplot(plot_data_s1, aes(x=east, y=north, fill=categories))+
+   geom_point(pch=21, size=3) +
+  scale_fill_manual(values=colors2) +
+  facet_wrap(~treatment) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill="transparent"),
+        plot.background=element_rect(fill="transparent"),
+        legend.background=element_rect(fill="transparent"),
+        legend.box.background=element_rect(fill="transparent"))+
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggsave("plots/microphonearray_plot_bothtreatment_altcolor.png", bg="transparent")
+
+#cheer only
+ggplot(plot_data_s1%>%filter(categories=="'cheer' call"), aes(x=east, y=north, fill=categories))+
+  geom_point(pch=21, size=3, fill=color.code[which(color.code$categories=="'cheer' call"),4][1]) +
+  facet_wrap(~treatment) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill="transparent"),
+        plot.background=element_rect(fill="transparent"),
+        legend.background=element_rect(fill="transparent"),
+        legend.box.background=element_rect(fill="transparent"))+
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggsave("plots/microphonearray_plot_cheeronly_altcolor.png", bg="transparent", width=10, height=5, units="in")
+
+#songs only
+ggplot(plot_data_s1%>%filter(categories=="RW song"|categories=="Other spp song"), aes(x=east, y=north, fill=categories))+
+  geom_point(pch=21, size=3) +
+  scale_fill_manual(values=c("#253494","#41b6c4"), guide="none") +
+  facet_wrap(~treatment) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill="transparent"),
+        plot.background=element_rect(fill="transparent"),
+        legend.background=element_rect(fill="transparent"),
+        legend.box.background=element_rect(fill="transparent"))+
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggsave("plots/microphonearray_plot_songsonly_altcolor.png", bg="transparent", width=10, height=5, units="in")
+
+#other spp alarms only
+ggplot(plot_data_s1%>%filter(categories=="Other spp alarm"), aes(x=east, y=north, fill=categories))+
+  geom_point(pch=21, size=3) +
+  scale_fill_manual(values="#fdcc8a", guide="none") +
+  facet_wrap(~treatment) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill="transparent"),
+        plot.background=element_rect(fill="transparent"),
+        legend.background=element_rect(fill="transparent"),
+        legend.box.background=element_rect(fill="transparent"))+
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggsave("plots/microphonearray_plot_othersppalarms_altcolor.png", bg="transparent", width=10, height=5, units="in")
+
+#other redwing alarms only
+ggplot(plot_data_s1%>%filter(categories=="RW other alarm"), aes(x=east, y=north, fill=categories))+
+  geom_point(pch=21, size=3) +
+  scale_fill_manual(values="#fc8d59", guide="none") +
+  facet_wrap(~treatment) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme_bw() +
+  theme(panel.background = element_rect(fill="transparent"),
+        plot.background=element_rect(fill="transparent"),
+        legend.background=element_rect(fill="transparent"),
+        legend.box.background=element_rect(fill="transparent"))+
+  annotate("text", x=coords.xy$east, y=coords.xy$north, label="X")
+
+ggsave("plots/microphonearray_plot_RWotheralarms_altcolor.png", bg="transparent", width=10, height=5, units="in")
+
+### plot signal spread using kernal density estimates and sliding window: alarm call treatment 1
+
+p1=ggplot(plot_data_s1 %>% filter(sec>0&sec<50)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8), aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("0-50 seconds")
+
+p2=ggplot(plot_data_s1 %>% filter(sec>25&sec<75)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7))+
+  ggtitle("25-75 seconds")
+
+p3=ggplot(plot_data_s1 %>% filter(sec>50&sec<100)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("50-100 seconds")
+
+p4=ggplot(plot_data_s1 %>% filter(sec>75&sec<125)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("75-125 seconds")
+
+p5=ggplot(plot_data_s1 %>% filter(sec>100&sec<150)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("100-150 seconds")
+
+p6=ggplot(plot_data_s1 %>% filter(sec>125&sec<175)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("125-175 seconds")
+
+p7=ggplot(plot_data_s1 %>% filter(sec>150&sec<200)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("150-200 seconds")
+
+p8=ggplot(plot_data_s1 %>% filter(sec>175&sec<225)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("175-225 seconds")
+
+p9=ggplot(plot_data_s1 %>% filter(sec>200&sec<250)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("200-250 seconds")
+
+p10=ggplot(plot_data_s1 %>% filter(sec>225&sec<275)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("225-275 seconds")
+
+p11=ggplot(plot_data_s1 %>% filter(sec>250&sec<300)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("250-300 seconds")
+
+plot_grid(p1,p2,p3,p4,p5,p6, p7, p8, p9, p10, p11, nrow=2)
+ggsave("kde_plot_slidingwindow.pdf", width=12, height=4.5)
+
+
+##same for control
+
+
+p1=ggplot(plot_data_s1 %>% filter(sec>0&sec<50)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8), aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("0-50 seconds")
+
+p2=ggplot(plot_data_s1 %>% filter(sec>25&sec<75)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7))+
+  ggtitle("25-75 seconds")
+
+p3=ggplot(plot_data_s1 %>% filter(sec>50&sec<100)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("50-100 seconds")
+
+p4=ggplot(plot_data_s1 %>% filter(sec>75&sec<125)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("75-125 seconds")
+
+p5=ggplot(plot_data_s1 %>% filter(sec>100&sec<150)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("100-150 seconds")
+
+p6=ggplot(plot_data_s1 %>% filter(sec>125&sec<175)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("125-175 seconds")
+
+p7=ggplot(plot_data_s1 %>% filter(sec>150&sec<200)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("150-200 seconds")
+
+p8=ggplot(plot_data_s1 %>% filter(sec>175&sec<225)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("175-225 seconds")
+
+p9=ggplot(plot_data_s1 %>% filter(sec>200&sec<250)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("200-250 seconds")
+
+p10=ggplot(plot_data_s1 %>% filter(sec>225&sec<275)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("225-275 seconds")
+
+p11=ggplot(plot_data_s1 %>% filter(sec>250&sec<300)%>% filter(treatment=="control") , aes(x=east, y=north))+
+  geom_hdr(probs=c(0.5, 0.8),aes(fill = after_stat(probs)), alpha=0.5, show.legend=F) +
+  xlim(xlims) +
+  ylim(ylims) +  
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(),axis.title.y=element_blank(), axis.text.y=element_blank()) +
+  geom_point(size=1, color=gray(0.2, alpha=0.7)) +
+  ggtitle("250-300 seconds")
+
+plot_grid(p1,p2,p3,p4,p5,p6, p7, p8, p9, p10, p11, nrow=2)
+ggsave("kde_plot_slidingwindow_control.pdf", width=12, height=4.5)
+## facet wrap
+
+plot_data=plot_data %>% mutate(timebin=ifelse(sec<=20, 0, ifelse(sec>20&sec<=100, 1, ifelse(sec>100&sec<=150, 2, ifelse(sec>150&sec<=200, 3, ifelse(sec>200&sec<=250, 4, ifelse(sec>250&sec<=300, 5,NA)))))))
+
+ggplot(plot_data %>%  filter(timebin>0) %>% filter(treatment=="alarm") , aes(x=east, y=north))+
+  geom_hdr(aes(fill = after_stat(probs)), alpha=0.5) +
+  xlim(xlims) +
+  ylim(ylims) +
+  facet_wrap(~timebin, ncol=1)+
+  geom_point(size=1, color=gray(0.2, alpha=0.7))
+
+ggsave("kde_plot.pdf", width=4, height=12)
+
+
+#prepare and make a global data frame for alarm call treatment series 2
+for(i in 1:length(loc.results.trim_s2)){
+  loc.results.trim_s2[[i]]$treatment=treatment_s2[i]
+}
+
+plot_data_s1=bind_rows(loc.results.trim_s2) %>%
+  mutate(categories=factor(categories, level=c("'cheer' call", "RW other alarm", "Other spp alarm", "RW song", "Other spp song", "dummy"))) %>% select(north, east, time, sound.type, treatment, categories, color, color2)
+
+plot_data_s1=plot_data_s1 %>% mutate(sec=floor(time)) %>% select(-time)
