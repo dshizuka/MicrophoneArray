@@ -284,6 +284,31 @@ ggplot(plot_data_s1%>%filter(categories=="RW other alarm"), aes(x=east, y=north,
 
 ggsave("plots/microphonearray_plot_RWotheralarms_altcolor.png", bg="transparent", width=10, height=5, units="in")
 
+##plot number of signals with sliding window
+time.seg=seq(0,300,25)
+time.start=time.seg[1:11]
+time.end=time.seg[3:13]
+time.label=paste(time.start, "-", time.end, " seconds", sep="")
+n.sig=vector(length=11)
+for(i in 1:11){
+  n.sig[i]=length(which(plot_data_s1$sec>=time.start[i] & plot_data_s1$sec<=time.end[i]))
+}
+freq.dat=data.frame(time.start=time.start, time.end=time.end, time.label=time.label, n.sig=n.sig)
+freq.dat
+
+p_freq=ggplot(freq.dat, aes(x=time.start, y=n.sig/50))+
+  geom_line() +
+  geom_point()
+
+p_freq.2=ggplot(freq.dat[3:11,], aes(x=time.start, y=n.sig/50))+
+  geom_line() +
+  scale_x_discrete(labels=c("0-50 sec", "25-50 sec", "50-100 sec", "75-125 sec", "100-150 sec", "125-175 sec", "150-200 sec", "175-225 sec", "200-250 sec")) +
+  xlab("Time Window") +
+  ylab("Call Rate") +
+  theme_bw()
+
+p_freq.2
+
 ### plot signal spread using kernal density estimates and sliding window: alarm call treatment 1
 
 p1=ggplot(plot_data_s1 %>% filter(sec>0&sec<50)%>% filter(treatment=="alarm") , aes(x=east, y=north))+
@@ -376,6 +401,18 @@ p11=ggplot(plot_data_s1 %>% filter(sec>250&sec<300)%>% filter(treatment=="alarm"
 
 plot_grid(p1,p2,p3,p4,p5,p6, p7, p8, p9, p10, p11, nrow=2)
 ggsave("kde_plot_slidingwindow.pdf", width=12, height=4.5)
+
+p3.2=p3+ggtitle("0-50 seconds")
+p4.2=p4+ggtitle("25-75 seconds")
+p5.2=p5+ggtitle("50-100 seconds")
+p6.2=p6+ggtitle("75-125 seconds")
+p7.2=p7+ggtitle("100-150 seconds")
+p8.2=p8+ggtitle("125-175 seconds")
+p9.2=p9+ggtitle("150-200 seconds")
+p10.2=p10+ggtitle("175-225 seconds")
+p11.2=p11+ggtitle("200-250 seconds")
+plot_grid(p3.2,p4.2,p5.2,p6.2, p7.2, p8.2, p9.2, p10.2, p11.2, p_freq.2,nrow=2)
+ggsave("kde_plot_slidingwindow_3to10.pdf", width=12, height=4.5)
 
 
 ##same for control
